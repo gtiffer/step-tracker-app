@@ -13,17 +13,33 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMotionUsageDescription": "This app uses motion data to track your daily steps and physical activity.",
+        "NSHealthShareUsageDescription": "This app accesses HealthKit to read your step count data.",
+        "NSHealthUpdateUsageDescription": "This app accesses HealthKit to update your step count data."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow $(PRODUCT_NAME) to access motion and fitness data to track your steps."
+        }
+      ]
+    ]
   }
 }
