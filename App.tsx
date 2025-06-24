@@ -7,7 +7,8 @@ export default function App() {
   const [activeTab, setActiveTab] = React.useState('Steps');
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
-  const [monthlyStepData, setMonthlyStepData] = React.useState<{[key: number]: number}>({});
+  const [weeklyStepData, setWeeklyStepData] = React.useState<{[key: string]: number}>({});
+  const [weekDateRange, setWeekDateRange] = React.useState<string>('');
   const [stepError, setStepError] = React.useState<string | null>(null);
 
   // Function to fetch today's actual step count
@@ -61,32 +62,138 @@ export default function App() {
     }
   };
 
-  // Function to load all monthly step data for calendar
-  const loadMonthlyStepData = async () => {
+  // Function to load all weekly step data for calendar
+  const loadWeeklyStepData = async () => {
     try {
-      console.log('Loading monthly step data for calendar...');
+      console.log('Loading weekly step data for calendar...');
       const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
-      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
       
-      const monthData: {[key: number]: number} = {};
+      // Calculate the start of the current week (Sunday)
+      const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - currentDay);
+      startOfWeek.setHours(0, 0, 0, 0);
       
-      // Load step data for each day of the current month
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const savedSteps = await loadTodaySteps(dateString);
+      // Calculate the end of the current week (Saturday)
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      
+      console.log('📅 Current week range:');
+      console.log('  Start (Sunday):', startOfWeek.toDateString());
+      console.log('  End (Saturday):', endOfWeek.toDateString());
+      
+      // Format the week date range for display
+      const formatDate = (date: Date) => {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+        return `${months[date.getMonth()]} ${date.getDate()}`;
+      };
+      
+      const weekRange = `Week of ${formatDate(startOfWeek)}-${formatDate(endOfWeek)}, ${startOfWeek.getFullYear()}`;
+      setWeekDateRange(weekRange);
+      console.log('📅 Week display:', weekRange);
+      
+      const weekData: {[key: string]: number} = {};
+      
+      // Check if pedometer is available for fetching historical data
+      const isAvailable = await Pedometer.isAvailableAsync();
+      
+      // Load step data for each day of the current week (7 days)
+      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const targetDate = new Date(startOfWeek);
+        targetDate.setDate(startOfWeek.getDate() + dayOffset);
+        
+        const dateString = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const dayKey = `day_${dayOffset}`; // day_0 = Sunday, day_1 = Monday, etc.
+        
+        let savedSteps = await loadTodaySteps(dateString);
         
         if (savedSteps !== null) {
-          monthData[day] = savedSteps;
+          // Use existing saved data
+          weekData[dayKey] = savedSteps;
+          console.log(`${targetDate.toDateString()}: Using saved data (${savedSteps} steps)`);
+        } else if (isAvailable) {
+          // Fetch historical data from Apple Health
+          try {
+            console.log(`🔍 HEALTH DEBUG - ${targetDate.toDateString()}: Fetching from Apple Health...`);
+            
+            // Create full day range for this specific day
+            const startOfDay = new Date(targetDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(targetDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            
+            console.log(`🔍 HEALTH DEBUG - Requested date: ${dateString}`);
+            console.log(`🔍 HEALTH DEBUG - Start time: ${startOfDay.toISOString()}`);
+            console.log(`🔍 HEALTH DEBUG - End time: ${endOfDay.toISOString()}`);
+            console.log(`🔍 HEALTH DEBUG - Days ago: ${Math.floor((now.getTime() - startOfDay.getTime()) / (1000 * 60 * 60 * 24))}`);
+            
+            // Get complete step count for this day from Apple Health
+            const result = await Pedometer.getStepCountAsync(startOfDay, endOfDay);
+            const daySteps = result.steps;
+            
+            console.log(`🔍 HEALTH DEBUG - API Response:`, result);
+            console.log(`🔍 HEALTH DEBUG - Steps returned: ${daySteps}`);
+            
+            // Check if we got valid data
+            if (daySteps === 0) {
+              console.log(`⚠️ HEALTH DEBUG - Zero steps returned for ${dateString} - may indicate no data available`);
+            } else if (daySteps > 0) {
+              console.log(`✅ HEALTH DEBUG - Valid step data retrieved for ${dateString}`);
+            }
+            
+            console.log(`${targetDate.toDateString()}: Retrieved ${daySteps} steps from Health`);
+            
+            // Save to AsyncStorage for future use
+            await saveTodaySteps(daySteps, dateString);
+            
+            // Add to week data
+            weekData[dayKey] = daySteps;
+            
+          } catch (dayError: any) {
+            console.error(`🔍 HEALTH DEBUG - Error fetching ${targetDate.toDateString()} from Health:`, dayError);
+            console.error(`🔍 HEALTH DEBUG - Error type:`, dayError.constructor.name);
+            console.error(`🔍 HEALTH DEBUG - Error message:`, dayError.message);
+            
+            // Check for specific error types
+            if (dayError.message && dayError.message.includes('permission')) {
+              console.error(`🔍 HEALTH DEBUG - Permission-related error for ${targetDate.toDateString()}`);
+            } else if (dayError.message && dayError.message.includes('data')) {
+              console.error(`🔍 HEALTH DEBUG - Data availability error for ${targetDate.toDateString()}`);
+            } else if (dayError.message && dayError.message.includes('range')) {
+              console.error(`🔍 HEALTH DEBUG - Date range error for ${targetDate.toDateString()}`);
+            }
+            
+            // Leave this day out of weekData (will show gray)
+          }
+        } else {
+          console.log(`${targetDate.toDateString()}: No saved data and pedometer unavailable`);
+          // Leave this day out of weekData (will show gray)
         }
       }
       
-      console.log('Loaded step data for', Object.keys(monthData).length, 'days');
-      setMonthlyStepData(monthData);
+      console.log('Loaded step data for', Object.keys(weekData).length, 'days out of 7 days in current week');
+      
+      // Log API optimization
+      console.log('🔍 API OPTIMIZATION:');
+      console.log('📱 Using weekly view (7 days) instead of monthly (30 days)');
+      console.log('⚡ Reduced API calls by ~75% compared to monthly view');
+      console.log('🎯 Working within 8-day API limitation effectively');
+      console.log(`📈 Data availability: ${Object.keys(weekData).length} out of 7 days retrieved`);
+      
+      if (Object.keys(weekData).length >= 5) {
+        console.log('✅ GOOD COVERAGE: Most days in the week have step data');
+      } else if (Object.keys(weekData).length >= 3) {
+        console.log('⚠️ PARTIAL COVERAGE: Some days in the week have step data');
+      } else {
+        console.log('❌ LOW COVERAGE: Few days in the week have step data');
+      }
+      
+      setWeeklyStepData(weekData);
       
     } catch (error) {
-      console.error('Error loading monthly step data:', error);
+      console.error('Error loading weekly step data:', error);
     }
   };
 
@@ -103,14 +210,21 @@ export default function App() {
         // Request permissions
         const { status } = await Pedometer.requestPermissionsAsync();
         console.log('Pedometer permission status:', status);
+        
+        // Get current permissions to see what we actually have
+        const currentPermissions = await Pedometer.getPermissionsAsync();
+        console.log('🔍 PERMISSION DEBUG - Current permissions:', currentPermissions);
+        console.log('🔍 PERMISSION DEBUG - Granted:', currentPermissions.granted);
+        console.log('🔍 PERMISSION DEBUG - Can ask again:', currentPermissions.canAskAgain);
+        
         setPedometerPermission(status);
         
         if (status === 'granted') {
           console.log('✅ Pedometer permissions granted! Ready to track steps.');
           // Fetch today's steps once permissions are granted
           await fetchTodaySteps();
-          // Load all monthly step data for calendar
-          await loadMonthlyStepData();
+          // Load all weekly step data for calendar
+          await loadWeeklyStepData();
         } else {
           console.log('❌ Pedometer permissions denied or restricted.');
         }
@@ -120,8 +234,8 @@ export default function App() {
         // Still test with mock data for storage functionality
         console.log('Pedometer unavailable, but testing with mock data');
         await fetchTodaySteps();
-        // Load all monthly step data for calendar
-        await loadMonthlyStepData();
+        // Load all weekly step data for calendar
+        await loadWeeklyStepData();
       }
     } catch (error) {
       console.error('Error requesting pedometer permissions:', error);
@@ -148,82 +262,50 @@ export default function App() {
 
   // Function to render calendar grid
   const renderCalendarGrid = () => {
-    const weeks: React.ReactElement[] = [];
-    let currentWeek: React.ReactElement[] = [];
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - currentDay);
     
-    // June 1st, 2025 falls on a Sunday (day 0), so no empty cells needed at the start
-    const startDay = 0; // 0 = Sunday
+    const weekDays: React.ReactElement[] = [];
     
-    // Add empty cells for the beginning of the month if needed
-    for (let i = 0; i < startDay; i++) {
-      currentWeek.push(
-        <View key={`empty-start-${i}`} style={styles.dayCell} />
-      );
-    }
-    
-    // Generate days 1-30 for June
-    for (let day = 1; day <= 30; day++) {
-      // Dynamic date calculation for today and yesterday
-      const now = new Date();
-      const currentDay = now.getDate();
+    // Generate 7 days for the current week (Sunday through Saturday)
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const targetDate = new Date(startOfWeek);
+      targetDate.setDate(startOfWeek.getDate() + dayOffset);
       
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayDay = yesterday.getDate();
-      
-      // Check if this is today's date or yesterday's date
-      const isToday = day === currentDay;
-      const isYesterday = day === yesterdayDay;
+      const dayKey = `day_${dayOffset}`;
+      const isToday = targetDate.toDateString() === now.toDateString();
       
       // Get color based on available step data
       let backgroundColor;
-      if (isToday) {
-        backgroundColor = getCalendarColorForSteps(todaySteps || 0);
-      } else if (monthlyStepData[day] !== undefined) {
-        backgroundColor = getCalendarColorForSteps(monthlyStepData[day]);
+      if (isToday && todaySteps !== null) {
+        backgroundColor = getCalendarColorForSteps(todaySteps);
+      } else if (weeklyStepData[dayKey] !== undefined) {
+        backgroundColor = getCalendarColorForSteps(weeklyStepData[dayKey]);
       } else {
         backgroundColor = '#f0f0f0'; // Gray for no data
       }
       
-      currentWeek.push(
+      weekDays.push(
         <View 
-          key={day} 
+          key={dayOffset} 
           style={[
             styles.dayCell, 
             { backgroundColor }
           ]}
         >
-          <Text style={styles.dayNumber}>{day}</Text>
-        </View>
-      );
-      
-      // If we've filled a week (7 days), start a new week
-      if ((startDay + day) % 7 === 0) {
-        weeks.push(
-          <View key={`week-${weeks.length}`} style={styles.weekRow}>
-            {currentWeek}
-          </View>
-        );
-        currentWeek = [];
-      }
-    }
-    
-    // Add empty cells at the end to complete the last week if needed
-    const remainingCells = 7 - currentWeek.length;
-    if (remainingCells < 7 && remainingCells > 0) {
-      for (let i = 0; i < remainingCells; i++) {
-        currentWeek.push(
-          <View key={`empty-end-${i}`} style={styles.dayCell} />
-        );
-      }
-      weeks.push(
-        <View key={`week-${weeks.length}`} style={styles.weekRow}>
-          {currentWeek}
+          <Text style={styles.dayNumber}>{targetDate.getDate()}</Text>
         </View>
       );
     }
     
-    return weeks;
+    // Return a single row with all 7 days
+    return (
+      <View style={styles.weekRow}>
+        {weekDays}
+      </View>
+    );
   };
 
   // Function to render day headers
@@ -264,6 +346,35 @@ export default function App() {
       
     } catch (error) {
       console.error('❌ Error saving step data to AsyncStorage:', error);
+    }
+  };
+
+  // Function to clear all saved step data from AsyncStorage
+  const clearAllStepData = async () => {
+    try {
+      console.log('🧹 Clearing all saved step data from AsyncStorage...');
+      
+      // Get all keys from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      
+      // Filter keys that start with 'steps_'
+      const stepKeys = allKeys.filter(key => key.startsWith('steps_'));
+      
+      console.log('🔍 Found step data keys:', stepKeys);
+      console.log(`🗑️ Clearing ${stepKeys.length} saved step data entries`);
+      
+      if (stepKeys.length > 0) {
+        // Remove all step data keys
+        await AsyncStorage.multiRemove(stepKeys);
+        
+        console.log('✅ Successfully cleared all step data:');
+        stepKeys.forEach(key => console.log(`   - Removed: ${key}`));
+      } else {
+        console.log('ℹ️ No step data found to clear');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error clearing step data from AsyncStorage:', error);
     }
   };
 
@@ -329,7 +440,7 @@ export default function App() {
       ) : (
         <View style={styles.statsContainer}>
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>JUNE 2025</Text>
+            <Text style={styles.cardLabel}>{weekDateRange || 'LOADING WEEK...'}</Text>
             <View style={styles.calendarContainer}>
               {renderDayHeaders()}
               {renderCalendarGrid()}
