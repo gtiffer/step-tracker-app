@@ -7,7 +7,7 @@ export default function App() {
   const [activeTab, setActiveTab] = React.useState('Steps');
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
-  const [yesterdaySteps, setYesterdaySteps] = React.useState<number | null>(null);
+  const [monthlyStepData, setMonthlyStepData] = React.useState<{[key: number]: number}>({});
   const [stepError, setStepError] = React.useState<string | null>(null);
 
   // Function to fetch today's actual step count
@@ -61,20 +61,32 @@ export default function App() {
     }
   };
 
-  // Function to load yesterday's step data for calendar
-  const loadYesterdaySteps = async () => {
+  // Function to load all monthly step data for calendar
+  const loadMonthlyStepData = async () => {
     try {
-      const yesterdayDate = '2025-06-22'; // June 22nd
-      const savedSteps = await loadTodaySteps(yesterdayDate);
+      console.log('Loading monthly step data for calendar...');
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
       
-      if (savedSteps !== null) {
-        setYesterdaySteps(savedSteps);
-      } else {
-        setYesterdaySteps(null);
+      const monthData: {[key: number]: number} = {};
+      
+      // Load step data for each day of the current month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const savedSteps = await loadTodaySteps(dateString);
+        
+        if (savedSteps !== null) {
+          monthData[day] = savedSteps;
+        }
       }
+      
+      console.log('Loaded step data for', Object.keys(monthData).length, 'days');
+      setMonthlyStepData(monthData);
+      
     } catch (error) {
-      console.error('Error loading yesterday\'s step data:', error);
-      setYesterdaySteps(null);
+      console.error('Error loading monthly step data:', error);
     }
   };
 
@@ -97,8 +109,8 @@ export default function App() {
           console.log('✅ Pedometer permissions granted! Ready to track steps.');
           // Fetch today's steps once permissions are granted
           await fetchTodaySteps();
-          // Load yesterday's step data for calendar
-          await loadYesterdaySteps();
+          // Load all monthly step data for calendar
+          await loadMonthlyStepData();
         } else {
           console.log('❌ Pedometer permissions denied or restricted.');
         }
@@ -108,8 +120,8 @@ export default function App() {
         // Still test with mock data for storage functionality
         console.log('Pedometer unavailable, but testing with mock data');
         await fetchTodaySteps();
-        // Load yesterday's step data for calendar
-        await loadYesterdaySteps();
+        // Load all monthly step data for calendar
+        await loadMonthlyStepData();
       }
     } catch (error) {
       console.error('Error requesting pedometer permissions:', error);
@@ -121,20 +133,6 @@ export default function App() {
   React.useEffect(() => {
     requestPedometerPermissions();
   }, []);
-
-  // Mock data for 30 days with different activity levels (0-4)
-  const generateMockData = () => {
-    const data = [];
-    for (let i = 1; i <= 30; i++) {
-      data.push({
-        day: i,
-        activity: Math.floor(Math.random() * 5), // 0-4 activity levels
-      });
-    }
-    return data;
-  };
-
-  const habitData = generateMockData();
 
   // Function to get color based on activity level
   const getActivityColor = (level: number): string => {
@@ -163,38 +161,44 @@ export default function App() {
       );
     }
     
-    // Add all days of June (30 days)
-    habitData.forEach((dayData, index) => {
-      // Check if this is today's date (June 23rd) or yesterday (June 22nd)
-      const isToday = dayData.day === 23;
-      const isYesterday = dayData.day === 22;
+    // Generate days 1-30 for June
+    for (let day = 1; day <= 30; day++) {
+      // Dynamic date calculation for today and yesterday
+      const now = new Date();
+      const currentDay = now.getDate();
       
-      // Get color based on whether it's a special day or not
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayDay = yesterday.getDate();
+      
+      // Check if this is today's date or yesterday's date
+      const isToday = day === currentDay;
+      const isYesterday = day === yesterdayDay;
+      
+      // Get color based on available step data
       let backgroundColor;
       if (isToday) {
         backgroundColor = getCalendarColorForSteps(todaySteps || 0);
-      } else if (isYesterday && yesterdaySteps !== null) {
-        backgroundColor = getCalendarColorForSteps(yesterdaySteps);
-      } else if (isYesterday && yesterdaySteps === null) {
-        backgroundColor = getActivityColor(dayData.activity);
+      } else if (monthlyStepData[day] !== undefined) {
+        backgroundColor = getCalendarColorForSteps(monthlyStepData[day]);
       } else {
-        backgroundColor = getActivityColor(dayData.activity);
+        backgroundColor = '#f0f0f0'; // Gray for no data
       }
       
       currentWeek.push(
         <View 
-          key={dayData.day} 
+          key={day} 
           style={[
             styles.dayCell, 
             { backgroundColor }
           ]}
         >
-          <Text style={styles.dayNumber}>{dayData.day}</Text>
+          <Text style={styles.dayNumber}>{day}</Text>
         </View>
       );
       
       // If we've filled a week (7 days), start a new week
-      if ((startDay + index + 1) % 7 === 0) {
+      if ((startDay + day) % 7 === 0) {
         weeks.push(
           <View key={`week-${weeks.length}`} style={styles.weekRow}>
             {currentWeek}
@@ -202,7 +206,7 @@ export default function App() {
         );
         currentWeek = [];
       }
-    });
+    }
     
     // Add empty cells at the end to complete the last week if needed
     const remainingCells = 7 - currentWeek.length;
