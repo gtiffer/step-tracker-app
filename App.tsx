@@ -4,7 +4,6 @@ import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = React.useState('Steps');
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
   const [weeklyStepData, setWeeklyStepData] = React.useState<{[key: string]: number}>({});
@@ -21,7 +20,7 @@ export default function App() {
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       // Try to load saved data first
-      const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const savedSteps = await loadTodaySteps(todayDate);
       
       console.log('Date range:', startOfDay, 'to', now);
@@ -104,7 +103,7 @@ export default function App() {
         const targetDate = new Date(startOfWeek);
         targetDate.setDate(startOfWeek.getDate() + dayOffset);
         
-        const dateString = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const dateString = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
         const dayKey = `day_${dayOffset}`; // day_0 = Sunday, day_1 = Monday, etc.
         
         let savedSteps = await loadTodaySteps(dateString);
@@ -201,6 +200,9 @@ export default function App() {
   const requestPedometerPermissions = async () => {
     try {
       console.log('Requesting pedometer permissions...');
+      
+      // Clear all saved step data to fix timezone issues from previous versions
+      await clearAllStepData();
       
       // Check if pedometer is available on the device
       const isAvailable = await Pedometer.isAvailableAsync();
@@ -422,66 +424,73 @@ export default function App() {
     return color;
   };
 
+  // Helper function to generate progress message
+  const getProgressMessage = (stepCount: number | null): string => {
+    if (stepCount === null) {
+      return 'Loading today\'s progress...';
+    }
+    
+    if (stepCount >= 10000) {
+      return 'You walked 10K+ steps today. Congrats! 🎉';
+    } else {
+      const stepsNeeded = 10000 - stepCount;
+      
+      // Array of encouragement messages
+      const encouragements = [
+        'Keep going!',
+        'You got this!',
+        'Let\'s go!',
+        'Almost there!',
+        'Stay strong!',
+        'Keep moving!',
+        'You can do it!'
+      ];
+      
+      // Use current date to select encouragement message (stays consistent throughout the day)
+      const today = new Date();
+      const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+      const encouragementIndex = dayOfYear % encouragements.length;
+      const encouragement = encouragements[encouragementIndex];
+      
+      return `${stepsNeeded.toLocaleString()} steps to hit 10K\n${encouragement}`;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>STEP TRACKER</Text>
       </View>
-      {activeTab === 'Steps' ? (
-        <View style={styles.statsContainer}>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>TODAY</Text>
-            <Text style={styles.cardNumber}>{formatStepCount(todaySteps)}</Text>
-            {stepError && (
-              <Text style={styles.errorText}>{stepError}</Text>
-            )}
-          </View>
+      <View style={styles.statsContainer}>
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>STEPS TODAY</Text>
+          <Text style={styles.cardNumber}>{formatStepCount(todaySteps)}</Text>
+          {stepError && (
+            <Text style={styles.errorText}>{stepError}</Text>
+          )}
         </View>
-      ) : (
-        <View style={styles.statsContainer}>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>{weekDateRange || 'LOADING WEEK...'}</Text>
-            <View style={styles.calendarContainer}>
-              {renderDayHeaders()}
-              {renderCalendarGrid()}
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>{weekDateRange || 'LOADING WEEK...'}</Text>
+          <View style={styles.calendarContainer}>
+            {renderDayHeaders()}
+            {renderCalendarGrid()}
+          </View>
+          <View style={styles.legendContainer}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSquare, { backgroundColor: '#f0f0f0' }]} />
+              <Text style={styles.legendItemText}>Under 10K steps</Text>
             </View>
-            <View style={styles.legendContainer}>
-              <Text style={styles.legendText}>Less</Text>
-              <View style={styles.legendDots}>
-                {[0, 1, 2, 3, 4].map(level => (
-                  <View 
-                    key={level}
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: getActivityColor(level) }
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text style={styles.legendText}>More</Text>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSquare, { backgroundColor: '#239a3b' }]} />
+              <Text style={styles.legendItemText}>10K+ steps</Text>
             </View>
           </View>
         </View>
-      )}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => setActiveTab('Steps')}
-        >
-          <Text style={styles.navIcon}>𝖿</Text>
-          <Text style={activeTab === 'Steps' ? styles.navLabel : styles.navLabelInactive}>
-            Steps
+        <View style={styles.progressContainer}>
+          <Text style={styles.progressText}>
+            {getProgressMessage(todaySteps)}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => setActiveTab('Habits')}
-        >
-          <Text style={styles.navIcon}>⊡</Text>
-          <Text style={activeTab === 'Habits' ? styles.navLabel : styles.navLabelInactive}>
-            Habits
-          </Text>
-        </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -505,9 +514,8 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     paddingHorizontal: 30,
-    paddingTop: 40,
+    paddingTop: 20,
     flex: 1,
-    justifyContent: 'center',
   },
   card: {
     backgroundColor: '#fff',
@@ -520,18 +528,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
-    maxWidth: 350,
-    alignSelf: 'center',
+    width: '100%',
   },
   cardLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#999',
     fontWeight: '500',
     marginBottom: 12,
     letterSpacing: 1,
   },
   cardNumber: {
-    fontSize: 64,
+    fontSize: 72,
     fontWeight: 'bold',
     color: '#000',
   },
@@ -563,19 +570,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
     justifyContent: 'center',
   },
-  legendText: {
-    fontSize: 12,
-    color: '#999',
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: 8,
   },
-  legendDots: {
-    flexDirection: 'row',
-  },
-  legendDot: {
+  legendSquare: {
     width: 12,
     height: 12,
     borderRadius: 2,
-    marginHorizontal: 2,
+    marginRight: 4,
+  },
+  legendItemText: {
+    fontSize: 12,
+    color: '#999',
   },
   headerRow: {
     flexDirection: 'row',
@@ -600,35 +608,40 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    paddingVertical: 20,
-    paddingHorizontal: 40,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  navItem: {
-    flex: 1,
+  stepsDisplay: {
+    padding: 40,
     alignItems: 'center',
   },
-  navIcon: {
-    fontSize: 20,
-    marginBottom: 4,
+  stepsLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 12,
+  },
+  stepsNumber: {
+    fontSize: 72,
+    fontWeight: 'bold',
     color: '#000',
   },
-  navLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#000',
+  calendarCard: {
+    padding: 40,
+    alignItems: 'center',
   },
-  navLabelInactive: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#999',
+  weekLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 12,
+  },
+  progressContainer: {
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  progressText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'center',
   },
 });
