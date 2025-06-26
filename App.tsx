@@ -9,6 +9,8 @@ export default function App() {
   const [weeklyStepData, setWeeklyStepData] = React.useState<{[key: string]: number}>({});
   const [weekDateRange, setWeekDateRange] = React.useState<string>('');
   const [stepError, setStepError] = React.useState<string | null>(null);
+  const [showProgress, setShowProgress] = React.useState<boolean>(false);
+  const [currentFilledBoxes, setCurrentFilledBoxes] = React.useState<number>(0);
 
   // Function to fetch today's actual step count
   const fetchTodaySteps = async () => {
@@ -250,6 +252,30 @@ export default function App() {
     requestPedometerPermissions();
   }, []);
 
+  // Add delay before showing progress boxes, then fill them sequentially
+  React.useEffect(() => {
+    const initialTimer = setTimeout(() => {
+      setShowProgress(true);
+      
+      // Start filling boxes one by one after the initial delay
+      const targetFilledBoxes = Math.floor((todaySteps || 0) / 1000);
+      let currentBox = 0;
+      
+      const fillInterval = setInterval(() => {
+        if (currentBox < targetFilledBoxes) {
+          setCurrentFilledBoxes(currentBox + 1);
+          currentBox++;
+        } else {
+          clearInterval(fillInterval);
+        }
+      }, 275); // Fill one box every 275ms
+      
+      return () => clearInterval(fillInterval);
+    }, 1000);
+
+    return () => clearTimeout(initialTimer);
+  }, [todaySteps]);
+
   // Function to get color based on activity level
   const getActivityColor = (level: number): string => {
     const colors: { [key: number]: string } = {
@@ -470,20 +496,38 @@ export default function App() {
           )}
         </View>
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>{weekDateRange || 'LOADING WEEK...'}</Text>
-          <View style={styles.calendarContainer}>
-            {renderDayHeaders()}
-            {renderCalendarGrid()}
-          </View>
-          <View style={styles.legendContainer}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSquare, { backgroundColor: '#f0f0f0' }]} />
-              <Text style={styles.legendItemText}>Under 10K steps</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSquare, { backgroundColor: '#239a3b' }]} />
-              <Text style={styles.legendItemText}>10K+ steps</Text>
-            </View>
+          <Text style={[styles.cardLabel, { marginBottom: 16 }]}>DAILY PROGRESS</Text>
+          <View style={styles.boxRow}>
+            {Array.from({ length: 10 }, (_, index) => {
+              let boxColor = '#f0f0f0'; // Default gray
+              
+              if (showProgress && index < currentFilledBoxes) {
+                // Progressive green colors for each box (1K to 10K steps)
+                const progressColors = [
+                  '#c6e48b', // Box 1 (1K steps): Light green
+                  '#a3d977', // Box 2 (2K steps): Slightly darker
+                  '#7bc96f', // Box 3 (3K steps): Medium light
+                  '#5fb85f', // Box 4 (4K steps): Medium
+                  '#4aa54a', // Box 5 (5K steps): Getting darker
+                  '#3d9140', // Box 6 (6K steps): Darker
+                  '#307d36', // Box 7 (7K steps): Much darker
+                  '#256a2c', // Box 8 (8K steps): Very dark
+                  '#1b5622', // Box 9 (9K steps): Almost there
+                  '#0f4318', // Box 10 (10K steps): Achievement dark green
+                ];
+                boxColor = progressColors[index];
+              }
+              
+              return (
+                <View 
+                  key={index} 
+                  style={[
+                    styles.grayBox, 
+                    { backgroundColor: boxColor }
+                  ]} 
+                />
+              );
+            })}
           </View>
         </View>
         <View style={styles.progressContainer}>
@@ -643,5 +687,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
+  },
+  boxRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  grayBox: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: 2,
+    borderRadius: 4,
   },
 });
