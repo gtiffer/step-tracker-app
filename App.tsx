@@ -1,9 +1,10 @@
 import React from 'react';
-import { StyleSheet, Text, View, SafeAreaView, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, Animated, Easing, TouchableOpacity } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
+  const [showWelcome, setShowWelcome] = React.useState<boolean>(true);
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
   const [stepError, setStepError] = React.useState<string | null>(null);
@@ -101,10 +102,12 @@ export default function App() {
     }
   };
 
-  // Request permissions when component mounts
+  // Request permissions when component mounts, but only after welcome screen is dismissed
   React.useEffect(() => {
-    requestPedometerPermissions();
-  }, []);
+    if (!showWelcome) {
+      requestPedometerPermissions();
+    }
+  }, [showWelcome]);
 
   // Add delay before showing progress boxes, then fill them sequentially
   React.useEffect(() => {
@@ -213,6 +216,11 @@ export default function App() {
 
   // Helper function to generate progress message
   const getProgressMessage = (stepCount: number | null): string => {
+    // Check if permissions are denied and we don't have step data
+    if (stepCount === null && (pedometerPermission === 'denied' || pedometerPermission === 'error')) {
+      return 'Motion tracking is disabled';
+    }
+    
     if (stepCount === null) {
       return 'Loading today\'s progress...';
     }
@@ -280,6 +288,17 @@ export default function App() {
   // Store confetti pieces in state to maintain animations
   const [confettiPieces, setConfettiPieces] = React.useState<any[]>([]);
 
+  // Function to handle "Get Started" button press
+  const handleGetStarted = () => {
+    setShowWelcome(false);
+  };
+
+  // Function to retry getting step data (for when permissions are denied)
+  const handleRetryPermissions = () => {
+    console.log('Retrying pedometer permissions...');
+    requestPedometerPermissions();
+  };
+
   // Function to start confetti animation
   const startConfettiAnimation = () => {
     const pieces = generateConfettiPieces();
@@ -334,6 +353,24 @@ export default function App() {
       </View>
     );
   };
+
+  // Render welcome screen
+  if (showWelcome) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.welcomeContainer}>
+          <View style={styles.welcomeCard}>
+            <Text style={styles.welcomeTitle}>Welcome to Step Tracker</Text>
+            <Text style={styles.welcomeSubtitle}>Track your daily steps and reach your 10K goal</Text>
+            <Text style={styles.welcomeDescription}>We'll ask for motion access to count your steps</Text>
+            <TouchableOpacity style={styles.getStartedButton} onPress={handleGetStarted}>
+              <Text style={styles.getStartedButtonText}>Get Started</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -396,6 +433,15 @@ export default function App() {
           <Text style={styles.progressText}>
             {getProgressMessage(todaySteps)}
           </Text>
+          {todaySteps === null && (pedometerPermission === 'denied' || pedometerPermission === 'error') && (
+            <View style={styles.permissionCard}>
+              <Text style={styles.permissionInstructions}>To track your steps, go to:</Text>
+              <Text style={styles.permissionPath}>Settings → StepTracker → Motion & Fitness</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={handleRetryPermissions}>
+                <Text style={styles.retryButtonText}>Check Again</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
       {renderConfetti()}
@@ -509,5 +555,94 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#999',
     fontWeight: '500',
+  },
+  welcomeContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  welcomeCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: 1,
+  },
+  welcomeSubtitle: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 24,
+  },
+  welcomeDescription: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  getStartedButton: {
+    backgroundColor: '#000',
+    borderRadius: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    minWidth: 160,
+  },
+  getStartedButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  permissionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    marginTop: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  permissionInstructions: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  permissionPath: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#000',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
