@@ -11,6 +11,7 @@ export default function App() {
   const [stepError, setStepError] = React.useState<string | null>(null);
   const [showProgress, setShowProgress] = React.useState<boolean>(false);
   const [currentFilledBoxes, setCurrentFilledBoxes] = React.useState<number>(0);
+  const [displayedSteps, setDisplayedSteps] = React.useState<number>(0);
 
   // Function to fetch today's actual step count
   const fetchTodaySteps = async () => {
@@ -276,6 +277,27 @@ export default function App() {
     return () => clearTimeout(initialTimer);
   }, [todaySteps]);
 
+  // Animate the step count from 0 to actual steps
+  React.useEffect(() => {
+    if (todaySteps !== null) {
+      const targetSteps = todaySteps;
+      const increment = Math.max(1, Math.floor(targetSteps / 50)); // Adjust increment based on target
+      let currentCount = 0;
+      
+      const countInterval = setInterval(() => {
+        currentCount += increment;
+        if (currentCount >= targetSteps) {
+          setDisplayedSteps(targetSteps);
+          clearInterval(countInterval);
+        } else {
+          setDisplayedSteps(currentCount);
+        }
+      }, 125); // Update every 125ms for gentle counting
+      
+      return () => clearInterval(countInterval);
+    }
+  }, [todaySteps]);
+
   // Function to get color based on activity level
   const getActivityColor = (level: number): string => {
     const colors: { [key: number]: string } = {
@@ -490,7 +512,7 @@ export default function App() {
       <View style={styles.statsContainer}>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>STEPS TODAY</Text>
-          <Text style={styles.cardNumber}>{formatStepCount(todaySteps)}</Text>
+          <Text style={styles.cardNumber}>{formatStepCount(displayedSteps)}</Text>
           {stepError && (
             <Text style={styles.errorText}>{stepError}</Text>
           )}
