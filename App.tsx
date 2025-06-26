@@ -1,17 +1,16 @@
 import React from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, Animated, Easing } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
-  const [weeklyStepData, setWeeklyStepData] = React.useState<{[key: string]: number}>({});
-  const [weekDateRange, setWeekDateRange] = React.useState<string>('');
   const [stepError, setStepError] = React.useState<string | null>(null);
   const [showProgress, setShowProgress] = React.useState<boolean>(false);
   const [currentFilledBoxes, setCurrentFilledBoxes] = React.useState<number>(0);
-  const [displayedSteps, setDisplayedSteps] = React.useState<number>(0);
+  const [showConfetti, setShowConfetti] = React.useState<boolean>(false);
+  const stepCountOpacity = React.useRef(new Animated.Value(0)).current;
 
   // Function to fetch today's actual step count
   const fetchTodaySteps = async () => {
@@ -22,9 +21,8 @@ export default function App() {
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
-      // Try to load saved data first
+      // Get today's date for saving step data
       const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const savedSteps = await loadTodaySteps(todayDate);
       
       console.log('Date range:', startOfDay, 'to', now);
       
@@ -44,12 +42,6 @@ export default function App() {
       console.log('Step count result:', result);
       console.log('Today\'s steps:', result.steps);
       
-      // Test the 10K achievement function
-      checkIfDayHit10K(result.steps);
-      
-      // Test the calendar color function
-      getCalendarColorForSteps(result.steps);
-      
       setTodaySteps(result.steps);
       setStepError(null);
       
@@ -61,141 +53,6 @@ export default function App() {
       console.error('Error fetching step count:', error);
       setStepError('Failed to fetch step data');
       setTodaySteps(null);
-    }
-  };
-
-  // Function to load all weekly step data for calendar
-  const loadWeeklyStepData = async () => {
-    try {
-      console.log('Loading weekly step data for calendar...');
-      const now = new Date();
-      
-      // Calculate the start of the current week (Sunday)
-      const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - currentDay);
-      startOfWeek.setHours(0, 0, 0, 0);
-      
-      // Calculate the end of the current week (Saturday)
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      endOfWeek.setHours(23, 59, 59, 999);
-      
-      console.log('📅 Current week range:');
-      console.log('  Start (Sunday):', startOfWeek.toDateString());
-      console.log('  End (Saturday):', endOfWeek.toDateString());
-      
-      // Format the week date range for display
-      const formatDate = (date: Date) => {
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                       'July', 'August', 'September', 'October', 'November', 'December'];
-        return `${months[date.getMonth()]} ${date.getDate()}`;
-      };
-      
-      const weekRange = `Week of ${formatDate(startOfWeek)}-${formatDate(endOfWeek)}, ${startOfWeek.getFullYear()}`;
-      setWeekDateRange(weekRange);
-      console.log('📅 Week display:', weekRange);
-      
-      const weekData: {[key: string]: number} = {};
-      
-      // Check if pedometer is available for fetching historical data
-      const isAvailable = await Pedometer.isAvailableAsync();
-      
-      // Load step data for each day of the current week (7 days)
-      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-        const targetDate = new Date(startOfWeek);
-        targetDate.setDate(startOfWeek.getDate() + dayOffset);
-        
-        const dateString = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-        const dayKey = `day_${dayOffset}`; // day_0 = Sunday, day_1 = Monday, etc.
-        
-        let savedSteps = await loadTodaySteps(dateString);
-        
-        if (savedSteps !== null) {
-          // Use existing saved data
-          weekData[dayKey] = savedSteps;
-          console.log(`${targetDate.toDateString()}: Using saved data (${savedSteps} steps)`);
-        } else if (isAvailable) {
-          // Fetch historical data from Apple Health
-          try {
-            console.log(`🔍 HEALTH DEBUG - ${targetDate.toDateString()}: Fetching from Apple Health...`);
-            
-            // Create full day range for this specific day
-            const startOfDay = new Date(targetDate);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(targetDate);
-            endOfDay.setHours(23, 59, 59, 999);
-            
-            console.log(`🔍 HEALTH DEBUG - Requested date: ${dateString}`);
-            console.log(`🔍 HEALTH DEBUG - Start time: ${startOfDay.toISOString()}`);
-            console.log(`🔍 HEALTH DEBUG - End time: ${endOfDay.toISOString()}`);
-            console.log(`🔍 HEALTH DEBUG - Days ago: ${Math.floor((now.getTime() - startOfDay.getTime()) / (1000 * 60 * 60 * 24))}`);
-            
-            // Get complete step count for this day from Apple Health
-            const result = await Pedometer.getStepCountAsync(startOfDay, endOfDay);
-            const daySteps = result.steps;
-            
-            console.log(`🔍 HEALTH DEBUG - API Response:`, result);
-            console.log(`🔍 HEALTH DEBUG - Steps returned: ${daySteps}`);
-            
-            // Check if we got valid data
-            if (daySteps === 0) {
-              console.log(`⚠️ HEALTH DEBUG - Zero steps returned for ${dateString} - may indicate no data available`);
-            } else if (daySteps > 0) {
-              console.log(`✅ HEALTH DEBUG - Valid step data retrieved for ${dateString}`);
-            }
-            
-            console.log(`${targetDate.toDateString()}: Retrieved ${daySteps} steps from Health`);
-            
-            // Save to AsyncStorage for future use
-            await saveTodaySteps(daySteps, dateString);
-            
-            // Add to week data
-            weekData[dayKey] = daySteps;
-            
-          } catch (dayError: any) {
-            console.error(`🔍 HEALTH DEBUG - Error fetching ${targetDate.toDateString()} from Health:`, dayError);
-            console.error(`🔍 HEALTH DEBUG - Error type:`, dayError.constructor.name);
-            console.error(`🔍 HEALTH DEBUG - Error message:`, dayError.message);
-            
-            // Check for specific error types
-            if (dayError.message && dayError.message.includes('permission')) {
-              console.error(`🔍 HEALTH DEBUG - Permission-related error for ${targetDate.toDateString()}`);
-            } else if (dayError.message && dayError.message.includes('data')) {
-              console.error(`🔍 HEALTH DEBUG - Data availability error for ${targetDate.toDateString()}`);
-            } else if (dayError.message && dayError.message.includes('range')) {
-              console.error(`🔍 HEALTH DEBUG - Date range error for ${targetDate.toDateString()}`);
-            }
-            
-            // Leave this day out of weekData (will show gray)
-          }
-        } else {
-          console.log(`${targetDate.toDateString()}: No saved data and pedometer unavailable`);
-          // Leave this day out of weekData (will show gray)
-        }
-      }
-      
-      console.log('Loaded step data for', Object.keys(weekData).length, 'days out of 7 days in current week');
-      
-      // Log API optimization
-      console.log('🔍 API OPTIMIZATION:');
-      console.log('📱 Using weekly view (7 days) instead of monthly (30 days)');
-      console.log('⚡ Reduced API calls by ~75% compared to monthly view');
-      console.log('🎯 Working within 8-day API limitation effectively');
-      console.log(`📈 Data availability: ${Object.keys(weekData).length} out of 7 days retrieved`);
-      
-      if (Object.keys(weekData).length >= 5) {
-        console.log('✅ GOOD COVERAGE: Most days in the week have step data');
-      } else if (Object.keys(weekData).length >= 3) {
-        console.log('⚠️ PARTIAL COVERAGE: Some days in the week have step data');
-      } else {
-        console.log('❌ LOW COVERAGE: Few days in the week have step data');
-      }
-      
-      setWeeklyStepData(weekData);
-      
-    } catch (error) {
-      console.error('Error loading weekly step data:', error);
     }
   };
 
@@ -228,8 +85,6 @@ export default function App() {
           console.log('✅ Pedometer permissions granted! Ready to track steps.');
           // Fetch today's steps once permissions are granted
           await fetchTodaySteps();
-          // Load all weekly step data for calendar
-          await loadWeeklyStepData();
         } else {
           console.log('❌ Pedometer permissions denied or restricted.');
         }
@@ -239,8 +94,6 @@ export default function App() {
         // Still test with mock data for storage functionality
         console.log('Pedometer unavailable, but testing with mock data');
         await fetchTodaySteps();
-        // Load all weekly step data for calendar
-        await loadWeeklyStepData();
       }
     } catch (error) {
       console.error('Error requesting pedometer permissions:', error);
@@ -268,6 +121,13 @@ export default function App() {
           currentBox++;
         } else {
           clearInterval(fillInterval);
+          
+          // Check if we should show confetti after boxes finish filling
+          if (todaySteps && todaySteps >= 10000) {
+            setShowConfetti(true);
+            startConfettiAnimation();
+            console.log('🎉 Confetti triggered! User hit 10K+ steps:', todaySteps);
+          }
         }
       }, 275); // Fill one box every 275ms
       
@@ -277,100 +137,19 @@ export default function App() {
     return () => clearTimeout(initialTimer);
   }, [todaySteps]);
 
-  // Animate the step count from 0 to actual steps
+  // Fade in the step count after a longer delay with gentle animation
   React.useEffect(() => {
-    if (todaySteps !== null) {
-      const targetSteps = todaySteps;
-      const increment = Math.max(1, Math.floor(targetSteps / 50)); // Adjust increment based on target
-      let currentCount = 0;
-      
-      const countInterval = setInterval(() => {
-        currentCount += increment;
-        if (currentCount >= targetSteps) {
-          setDisplayedSteps(targetSteps);
-          clearInterval(countInterval);
-        } else {
-          setDisplayedSteps(currentCount);
-        }
-      }, 125); // Update every 125ms for gentle counting
-      
-      return () => clearInterval(countInterval);
-    }
-  }, [todaySteps]);
+    const fadeTimer = setTimeout(() => {
+      Animated.timing(stepCountOpacity, {
+        toValue: 1,
+        duration: 2500, // 2.5 second fade-in
+        useNativeDriver: true,
+        easing: Easing.inOut(Easing.ease),
+      }).start();
+    }, 650); // 650ms initial delay
 
-  // Function to get color based on activity level
-  const getActivityColor = (level: number): string => {
-    const colors: { [key: number]: string } = {
-      0: '#f0f0f0', // Gray for no activity
-      1: '#c6e48b', // Light green
-      2: '#7bc96f', // Medium light green
-      3: '#239a3b', // Medium green
-      4: '#196127', // Dark green
-    };
-    return colors[level];
-  };
-
-  // Function to render calendar grid
-  const renderCalendarGrid = () => {
-    const now = new Date();
-    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - currentDay);
-    
-    const weekDays: React.ReactElement[] = [];
-    
-    // Generate 7 days for the current week (Sunday through Saturday)
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-      const targetDate = new Date(startOfWeek);
-      targetDate.setDate(startOfWeek.getDate() + dayOffset);
-      
-      const dayKey = `day_${dayOffset}`;
-      const isToday = targetDate.toDateString() === now.toDateString();
-      
-      // Get color based on available step data
-      let backgroundColor;
-      if (isToday && todaySteps !== null) {
-        backgroundColor = getCalendarColorForSteps(todaySteps);
-      } else if (weeklyStepData[dayKey] !== undefined) {
-        backgroundColor = getCalendarColorForSteps(weeklyStepData[dayKey]);
-      } else {
-        backgroundColor = '#f0f0f0'; // Gray for no data
-      }
-      
-      weekDays.push(
-        <View 
-          key={dayOffset} 
-          style={[
-            styles.dayCell, 
-            { backgroundColor }
-          ]}
-        >
-          <Text style={styles.dayNumber}>{targetDate.getDate()}</Text>
-        </View>
-      );
-    }
-    
-    // Return a single row with all 7 days
-    return (
-      <View style={styles.weekRow}>
-        {weekDays}
-      </View>
-    );
-  };
-
-  // Function to render day headers
-  const renderDayHeaders = () => {
-    const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    return (
-      <View style={styles.headerRow}>
-        {dayLabels.map((day, index) => (
-          <View key={index} style={styles.headerCell}>
-            <Text style={styles.headerText}>{day}</Text>
-          </View>
-        ))}
-      </View>
-    );
-  };
+    return () => clearTimeout(fadeTimer);
+  }, [stepCountOpacity]);
 
   // Helper function to format step count
   const formatStepCount = (steps: number | null): string => {
@@ -428,49 +207,9 @@ export default function App() {
     }
   };
 
-  // Function to load today's step data from local storage
-  const loadTodaySteps = async (date: string): Promise<number | null> => {
-    try {
-      console.log('📖 Loading step data from AsyncStorage...');
-      console.log('Date:', date);
-      
-      // Create the key to look for
-      const key = `steps_${date}`;
-      console.log('Looking for key:', key);
-      
-      // Try to load from AsyncStorage
-      const value = await AsyncStorage.getItem(key);
-      
-      if (value !== null) {
-        const stepCount = parseInt(value, 10);
-        console.log('✅ Found saved step data:', key, '=', value);
-        console.log('Parsed step count:', stepCount);
-        return stepCount;
-      } else {
-        console.log('❌ No saved step data found for:', key);
-        return null;
-      }
-      
-    } catch (error) {
-      console.error('❌ Error loading step data from AsyncStorage:', error);
-      return null;
-    }
-  };
 
-  // Function to check if a day hit the 10K+ step achievement
-  const checkIfDayHit10K = (stepCount: number): boolean => {
-    const hit10K = stepCount >= 10000;
-    console.log(`🎯 10K check: ${stepCount} steps = ${hit10K ? '✅ Achievement!' : '❌ Not quite'}`);
-    return hit10K;
-  };
 
-  // Function to get calendar color based on step count
-  const getCalendarColorForSteps = (stepCount: number): string => {
-    const isAchievement = checkIfDayHit10K(stepCount);
-    const color = isAchievement ? '#239a3b' : '#f0f0f0'; // Green for 10K+, gray for under
-    console.log(`🎨 Color for ${stepCount} steps: ${color} (${isAchievement ? 'Achievement Green' : 'Gray'})`);
-    return color;
-  };
+
 
   // Helper function to generate progress message
   const getProgressMessage = (stepCount: number | null): string => {
@@ -504,6 +243,98 @@ export default function App() {
     }
   };
 
+  // Function to generate random confetti pieces with animations
+  const generateConfettiPieces = () => {
+    const colors = ['#ff4444', '#4444ff', '#ffff44', '#44ff44', '#ff44ff', '#ff8844']; // red, blue, yellow, green, purple, orange
+    const pieces = [];
+    
+    // Generate 20 confetti pieces
+    for (let i = 0; i < 20; i++) {
+      const isCircle = Math.random() > 0.5; // 50/50 chance for circle vs square
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const size = Math.random() * 8 + 6; // Random size between 6-14
+      const left = Math.random() * 85; // Random position (0-85% to avoid edges)
+      const initialTop = Math.random() * 30 + 10; // Start higher up (10-40% from top)
+      
+      // Create animated value for each piece's vertical position
+      const animatedTop = new Animated.Value(initialTop);
+      
+      // Random fall duration between 2-3 seconds for varied speeds
+      const fallDuration = Math.random() * 1000 + 2000; // 2000-3000ms
+      
+      pieces.push({
+        id: i,
+        isCircle,
+        color,
+        size,
+        left,
+        initialTop,
+        animatedTop,
+        fallDuration,
+      });
+    }
+    
+    return pieces;
+  };
+
+  // Store confetti pieces in state to maintain animations
+  const [confettiPieces, setConfettiPieces] = React.useState<any[]>([]);
+
+  // Function to start confetti animation
+  const startConfettiAnimation = () => {
+    const pieces = generateConfettiPieces();
+    setConfettiPieces(pieces);
+    
+    // Start falling animation for all pieces
+    pieces.forEach((piece) => {
+      Animated.timing(piece.animatedTop, {
+        toValue: 110, // Fall to 110% (off screen)
+        duration: piece.fallDuration,
+        useNativeDriver: false, // Can't use native driver for layout properties
+        easing: Easing.out(Easing.quad), // Gentle easing for realistic fall
+      }).start(() => {
+        // Animation completed - piece has fallen off screen
+        console.log(`Confetti piece ${piece.id} finished falling`);
+      });
+    });
+
+    // Clean up confetti after all animations should be done (3.5 seconds max)
+    setTimeout(() => {
+      setConfettiPieces([]);
+      setShowConfetti(false);
+      console.log('🧹 Confetti cleaned up');
+    }, 3500);
+  };
+
+  // Function to render animated confetti pieces
+  const renderConfetti = () => {
+    if (!showConfetti || confettiPieces.length === 0) return null;
+    
+    return (
+      <View style={styles.confettiContainer}>
+        {confettiPieces.map((piece) => (
+          <Animated.View
+            key={piece.id}
+            style={[
+              styles.confettiPiece,
+              {
+                backgroundColor: piece.color,
+                width: piece.size,
+                height: piece.size,
+                borderRadius: piece.isCircle ? piece.size / 2 : 2,
+                left: `${piece.left}%`,
+                top: piece.animatedTop.interpolate({
+                  inputRange: [0, 100],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
+            ]}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -512,7 +343,7 @@ export default function App() {
       <View style={styles.statsContainer}>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>STEPS TODAY</Text>
-          <Text style={styles.cardNumber}>{formatStepCount(displayedSteps)}</Text>
+          <Animated.Text style={[styles.cardNumber, { opacity: stepCountOpacity }]}>{formatStepCount(todaySteps)}</Animated.Text>
           {stepError && (
             <Text style={styles.errorText}>{stepError}</Text>
           )}
@@ -551,6 +382,15 @@ export default function App() {
               );
             })}
           </View>
+          <View style={styles.labelRow}>
+            {Array.from({ length: 10 }, (_, index) => (
+              <View key={index} style={styles.labelCell}>
+                <Text style={styles.boxLabel}>
+                  {index === 0 ? '1K' : index === 9 ? '10K' : ''}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
         <View style={styles.progressContainer}>
           <Text style={styles.progressText}>
@@ -558,6 +398,7 @@ export default function App() {
           </Text>
         </View>
       </View>
+      {renderConfetti()}
     </SafeAreaView>
   );
 }
@@ -608,96 +449,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000',
   },
-  calendarContainer: {
-    marginTop: 20,
-    width: '100%',
-  },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  dayCell: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
-  dayNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#000',
-  },
-  legendContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-    justifyContent: 'center',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 8,
-  },
-  legendSquare: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    marginRight: 4,
-  },
-  legendItemText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  headerCell: {
-    width: 32,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
-  headerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-  },
   errorText: {
     fontSize: 12,
     color: '#ff4444',
     marginTop: 8,
     textAlign: 'center',
-  },
-  stepsDisplay: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  stepsLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 12,
-  },
-  stepsNumber: {
-    fontSize: 72,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  calendarCard: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  weekLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 12,
   },
   progressContainer: {
     paddingVertical: 40,
@@ -721,5 +477,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     marginHorizontal: 2,
     borderRadius: 4,
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  labelCell: {
+    width: 24,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  boxLabel: {
+    fontSize: 10,
+    color: '#999',
+    fontWeight: '500',
   },
 });
