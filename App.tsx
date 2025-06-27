@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [showWelcome, setShowWelcome] = React.useState<boolean>(true);
+  const [welcomeLoaded, setWelcomeLoaded] = React.useState<boolean>(false);
   const [pedometerPermission, setPedometerPermission] = React.useState<string | null>(null);
   const [todaySteps, setTodaySteps] = React.useState<number | null>(null);
   const [stepError, setStepError] = React.useState<string | null>(null);
@@ -210,9 +211,38 @@ export default function App() {
     }
   };
 
+  // Function to check if welcome screen has been dismissed
+  const checkWelcomeStatus = async () => {
+    try {
+      console.log('🔍 Checking welcome screen status...');
+      const welcomeDismissed = await AsyncStorage.getItem('welcome_dismissed');
+      console.log('Welcome dismissed status:', welcomeDismissed);
+      
+      if (welcomeDismissed === 'true') {
+        setShowWelcome(false);
+      }
+      setWelcomeLoaded(true);
+    } catch (error) {
+      console.error('❌ Error checking welcome status:', error);
+      setWelcomeLoaded(true); // Set loaded to true even on error to prevent infinite loading
+    }
+  };
 
+  // Function to save welcome dismissal to AsyncStorage
+  const saveWelcomeDismissed = async () => {
+    try {
+      console.log('💾 Saving welcome dismissed status...');
+      await AsyncStorage.setItem('welcome_dismissed', 'true');
+      console.log('✅ Welcome dismissed status saved');
+    } catch (error) {
+      console.error('❌ Error saving welcome dismissed status:', error);
+    }
+  };
 
-
+  // Check welcome status on app startup
+  React.useEffect(() => {
+    checkWelcomeStatus();
+  }, []);
 
   // Helper function to generate progress message
   const getProgressMessage = (stepCount: number | null): string => {
@@ -289,7 +319,8 @@ export default function App() {
   const [confettiPieces, setConfettiPieces] = React.useState<any[]>([]);
 
   // Function to handle "Get Started" button press
-  const handleGetStarted = () => {
+  const handleGetStarted = async () => {
+    await saveWelcomeDismissed();
     setShowWelcome(false);
   };
 
@@ -353,6 +384,19 @@ export default function App() {
       </View>
     );
   };
+
+  // Show loading while checking welcome status
+  if (!welcomeLoaded) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.welcomeContainer}>
+          <View style={styles.welcomeCard}>
+            <Text style={styles.welcomeSubtitle}>Loading...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Render welcome screen
   if (showWelcome) {

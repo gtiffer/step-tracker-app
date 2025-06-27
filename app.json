@@ -2,7 +2,7 @@
   "expo": {
     "name": "StepTracker",
     "slug": "StepTracker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,7 +21,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gustiffer.steptracker",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSMotionUsageDescription": "This app uses motion data to track your daily steps and physical activity.",
         "NSHealthShareUsageDescription": "This app accesses HealthKit to read your step count data.",
