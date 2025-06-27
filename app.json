@@ -9,7 +9,10 @@
     "newArchEnabled": true,
     "description": "Track your daily steps and reach your fitness goals with a simple, beautiful step counter.",
     "privacy": "public",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -22,7 +25,8 @@
       "infoPlist": {
         "NSMotionUsageDescription": "This app uses motion data to track your daily steps and physical activity.",
         "NSHealthShareUsageDescription": "This app accesses HealthKit to read your step count data.",
-        "NSHealthUpdateUsageDescription": "This app accesses HealthKit to update your step count data."
+        "NSHealthUpdateUsageDescription": "This app accesses HealthKit to update your step count data.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -47,6 +51,11 @@
           "motionPermission": "Allow $(PRODUCT_NAME) to access motion and fitness data to track your steps."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fba79e40-a66d-489d-b545-2db729f34fb1"
+      }
+    }
   }
 }
