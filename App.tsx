@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, SafeAreaView, Animated, Easing, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, Animated, Easing, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -12,6 +12,8 @@ export default function App() {
   const [showProgress, setShowProgress] = React.useState<boolean>(false);
   const [currentFilledBoxes, setCurrentFilledBoxes] = React.useState<number>(0);
   const [showConfetti, setShowConfetti] = React.useState<boolean>(false);
+  const [refreshing, setRefreshing] = React.useState<boolean>(false);
+  const [refreshTrigger, setRefreshTrigger] = React.useState<number>(0);
   const stepCountOpacity = React.useRef(new Animated.Value(0)).current;
 
   // Function to fetch today's actual step count
@@ -112,48 +114,54 @@ export default function App() {
 
   // Add delay before showing progress boxes, then fill them sequentially
   React.useEffect(() => {
-    const initialTimer = setTimeout(() => {
-      setShowProgress(true);
-      
-      // Start filling boxes one by one after the initial delay
-      const targetFilledBoxes = Math.floor((todaySteps || 0) / 1000);
-      let currentBox = 0;
-      
-      const fillInterval = setInterval(() => {
-        if (currentBox < targetFilledBoxes) {
-          setCurrentFilledBoxes(currentBox + 1);
-          currentBox++;
-        } else {
-          clearInterval(fillInterval);
-          
-          // Check if we should show confetti after boxes finish filling
-          if (todaySteps && todaySteps >= 10000) {
-            setShowConfetti(true);
-            startConfettiAnimation();
-            console.log('🎉 Confetti triggered! User hit 10K+ steps:', todaySteps);
+    // Only start animation if we have step data (not null)
+    if (todaySteps !== null) {
+      const initialTimer = setTimeout(() => {
+        setShowProgress(true);
+        
+        // Start filling boxes one by one after the initial delay
+        const targetFilledBoxes = Math.floor((todaySteps || 0) / 1000);
+        let currentBox = 0;
+        
+        const fillInterval = setInterval(() => {
+          if (currentBox < targetFilledBoxes) {
+            setCurrentFilledBoxes(currentBox + 1);
+            currentBox++;
+          } else {
+            clearInterval(fillInterval);
+            
+            // Check if we should show confetti after boxes finish filling
+            if (todaySteps && todaySteps >= 10000) {
+              setShowConfetti(true);
+              startConfettiAnimation();
+              console.log('🎉 Confetti triggered! User hit 10K+ steps:', todaySteps);
+            }
           }
-        }
-      }, 275); // Fill one box every 275ms
-      
-      return () => clearInterval(fillInterval);
-    }, 1000);
+        }, 275); // Fill one box every 275ms
+        
+        return () => clearInterval(fillInterval);
+      }, 1000);
 
-    return () => clearTimeout(initialTimer);
-  }, [todaySteps]);
+      return () => clearTimeout(initialTimer);
+    }
+  }, [todaySteps, refreshTrigger]);
 
   // Fade in the step count after a longer delay with gentle animation
   React.useEffect(() => {
-    const fadeTimer = setTimeout(() => {
-      Animated.timing(stepCountOpacity, {
-        toValue: 1,
-        duration: 2500, // 2.5 second fade-in
-        useNativeDriver: true,
-        easing: Easing.inOut(Easing.ease),
-      }).start();
-    }, 650); // 650ms initial delay
+    // Only start animation if we have step data (not null)
+    if (todaySteps !== null) {
+      const fadeTimer = setTimeout(() => {
+        Animated.timing(stepCountOpacity, {
+          toValue: 1,
+          duration: 2500, // 2.5 second fade-in
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }).start();
+      }, 650); // 650ms initial delay
 
-    return () => clearTimeout(fadeTimer);
-  }, [stepCountOpacity]);
+      return () => clearTimeout(fadeTimer);
+    }
+  }, [stepCountOpacity, todaySteps, refreshTrigger]);
 
   // Helper function to format step count
   const formatStepCount = (steps: number | null): string => {
@@ -385,6 +393,34 @@ export default function App() {
     );
   };
 
+  // Function to handle pull-to-refresh
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    
+    // Reset animation states to allow them to re-trigger
+    setShowProgress(false);
+    setCurrentFilledBoxes(0);
+    setShowConfetti(false);
+    stepCountOpacity.setValue(0);
+    
+    try {
+      // Fetch fresh step data
+      await fetchTodaySteps();
+      
+      // Add a small delay to ensure step count updates before ending refresh
+      // This allows the useEffect hooks to re-trigger properly with the new data
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Increment refresh trigger to force animations to restart even if data is the same
+      setRefreshTrigger(prev => prev + 1);
+      
+    } catch (error) {
+      console.error('Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [stepCountOpacity]);
+
   // Show loading while checking welcome status
   if (!welcomeLoaded) {
     return (
@@ -404,7 +440,7 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <View style={styles.welcomeContainer}>
           <View style={styles.welcomeCard}>
-            <Text style={styles.welcomeTitle}>Welcome to Step Tracker</Text>
+            <Text style={styles.welcomeTitle}>Welcome to 10K Steps Today</Text>
             <Text style={styles.welcomeSubtitle}>Track your daily steps and reach your 10K goal</Text>
             <Text style={styles.welcomeDescription}>We'll ask for motion access to count your steps</Text>
             <TouchableOpacity style={styles.getStartedButton} onPress={handleGetStarted}>
@@ -418,76 +454,91 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>STEP TRACKER</Text>
-      </View>
-      <View style={styles.statsContainer}>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>STEPS TODAY</Text>
-          <Animated.Text style={[styles.cardNumber, { opacity: stepCountOpacity }]}>{formatStepCount(todaySteps)}</Animated.Text>
-          {stepError && (
-            <Text style={styles.errorText}>{stepError}</Text>
-          )}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#000"
+            title="Pull to refresh steps"
+            titleColor="#666"
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>10K STEPS TODAY</Text>
         </View>
-        <View style={styles.card}>
-          <Text style={[styles.cardLabel, { marginBottom: 16 }]}>DAILY PROGRESS</Text>
-          <View style={styles.boxRow}>
-            {Array.from({ length: 10 }, (_, index) => {
-              let boxColor = '#f0f0f0'; // Default gray
-              
-              if (showProgress && index < currentFilledBoxes) {
-                // Progressive green colors for each box (1K to 10K steps)
-                const progressColors = [
-                  '#c6e48b', // Box 1 (1K steps): Light green
-                  '#a3d977', // Box 2 (2K steps): Slightly darker
-                  '#7bc96f', // Box 3 (3K steps): Medium light
-                  '#5fb85f', // Box 4 (4K steps): Medium
-                  '#4aa54a', // Box 5 (5K steps): Getting darker
-                  '#3d9140', // Box 6 (6K steps): Darker
-                  '#307d36', // Box 7 (7K steps): Much darker
-                  '#256a2c', // Box 8 (8K steps): Very dark
-                  '#1b5622', // Box 9 (9K steps): Almost there
-                  '#0f4318', // Box 10 (10K steps): Achievement dark green
-                ];
-                boxColor = progressColors[index];
-              }
-              
-              return (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.grayBox, 
-                    { backgroundColor: boxColor }
-                  ]} 
-                />
-              );
-            })}
+        <View style={styles.statsContainer}>
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>STEPS TODAY</Text>
+            <Animated.Text style={[styles.cardNumber, { opacity: stepCountOpacity }]}>{formatStepCount(todaySteps)}</Animated.Text>
+            {stepError && (
+              <Text style={styles.errorText}>{stepError}</Text>
+            )}
           </View>
-          <View style={styles.labelRow}>
-            {Array.from({ length: 10 }, (_, index) => (
-              <View key={index} style={styles.labelCell}>
-                <Text style={styles.boxLabel}>
-                  {index === 0 ? '1K' : index === 9 ? '10K' : ''}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-        <View style={styles.progressContainer}>
-          <Text style={styles.progressText}>
-            {getProgressMessage(todaySteps)}
-          </Text>
-          {todaySteps === null && (pedometerPermission === 'denied' || pedometerPermission === 'error') && (
-            <View style={styles.permissionCard}>
-              <Text style={styles.permissionInstructions}>To track your steps, go to:</Text>
-              <Text style={styles.permissionPath}>Settings → StepTracker → Motion & Fitness</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={handleRetryPermissions}>
-                <Text style={styles.retryButtonText}>Check Again</Text>
-              </TouchableOpacity>
+          <View style={styles.card}>
+            <Text style={[styles.cardLabel, { marginBottom: 16 }]}>DAILY PROGRESS</Text>
+            <View style={styles.boxRow}>
+              {Array.from({ length: 10 }, (_, index) => {
+                let boxColor = '#f0f0f0'; // Default gray
+                
+                if (showProgress && index < currentFilledBoxes) {
+                  // Progressive green colors for each box (1K to 10K steps)
+                  const progressColors = [
+                    '#c6e48b', // Box 1 (1K steps): Light green
+                    '#a3d977', // Box 2 (2K steps): Slightly darker
+                    '#7bc96f', // Box 3 (3K steps): Medium light
+                    '#5fb85f', // Box 4 (4K steps): Medium
+                    '#4aa54a', // Box 5 (5K steps): Getting darker
+                    '#3d9140', // Box 6 (6K steps): Darker
+                    '#307d36', // Box 7 (7K steps): Much darker
+                    '#256a2c', // Box 8 (8K steps): Very dark
+                    '#1b5622', // Box 9 (9K steps): Almost there
+                    '#0f4318', // Box 10 (10K steps): Achievement dark green
+                  ];
+                  boxColor = progressColors[index];
+                }
+                
+                return (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.grayBox, 
+                      { backgroundColor: boxColor }
+                    ]} 
+                  />
+                );
+              })}
             </View>
-          )}
+            <View style={styles.labelRow}>
+              {Array.from({ length: 10 }, (_, index) => (
+                <View key={index} style={styles.labelCell}>
+                  <Text style={styles.boxLabel}>
+                    {index === 0 ? '1K' : index === 9 ? '10K' : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={styles.progressContainer}>
+            <Text style={styles.progressText}>
+              {getProgressMessage(todaySteps)}
+            </Text>
+            {todaySteps === null && (pedometerPermission === 'denied' || pedometerPermission === 'error') && (
+              <View style={styles.permissionCard}>
+                <Text style={styles.permissionInstructions}>To track your steps, go to:</Text>
+                <Text style={styles.permissionPath}>Settings → StepTracker → Motion & Fitness</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={handleRetryPermissions}>
+                  <Text style={styles.retryButtonText}>Check Again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      </ScrollView>
       {renderConfetti()}
     </SafeAreaView>
   );
@@ -497,6 +548,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
   },
   header: {
     paddingTop: 20,

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "StepTracker",
+    "name": "10K Steps Today",
     "slug": "StepTracker",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -23,7 +23,7 @@
       "bundleIdentifier": "com.gustiffer.steptracker",
       "buildNumber": "2",
       "infoPlist": {
-        "NSMotionUsageDescription": "This app uses motion data to track your daily steps and physical activity.",
+        "NSMotionUsageDescription": "This app uses motion data to track your daily steps and help you reach your 10K daily goal.",
         "NSHealthShareUsageDescription": "This app accesses HealthKit to read your step count data.",
         "NSHealthUpdateUsageDescription": "This app accesses HealthKit to update your step count data.",
         "ITSAppUsesNonExemptEncryption": false
@@ -48,7 +48,7 @@
       [
         "expo-sensors",
         {
-          "motionPermission": "Allow $(PRODUCT_NAME) to access motion and fitness data to track your steps."
+          "motionPermission": "Allow $(PRODUCT_NAME) to access motion and fitness data to track your steps and reach your 10K daily goal."
         }
       ]
     ],
