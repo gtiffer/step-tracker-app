@@ -481,11 +481,13 @@ export default function App() {
           </View>
           <View style={styles.card}>
             <Text style={[styles.cardLabel, { marginBottom: 16 }]}>DAILY PROGRESS</Text>
+            {/* First row: boxes 1-5 (1K-5K steps) */}
             <View style={styles.boxRow}>
-              {Array.from({ length: 10 }, (_, index) => {
+              {Array.from({ length: 5 }, (_, index) => {
                 let boxColor = '#f0f0f0'; // Default gray
+                const isFilled = showProgress && index < currentFilledBoxes;
                 
-                if (showProgress && index < currentFilledBoxes) {
+                if (isFilled) {
                   // Progressive green colors for each box (1K to 10K steps)
                   const progressColors = [
                     '#c6e48b', // Box 1 (1K steps): Light green
@@ -493,6 +495,38 @@ export default function App() {
                     '#7bc96f', // Box 3 (3K steps): Medium light
                     '#5fb85f', // Box 4 (4K steps): Medium
                     '#4aa54a', // Box 5 (5K steps): Getting darker
+                  ];
+                  boxColor = progressColors[index];
+                }
+                
+                const label = `${index + 1}K`;
+                
+                return (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.grayBox, 
+                      { backgroundColor: boxColor }
+                    ]} 
+                  >
+                    <Text style={[
+                      styles.boxLabelInside,
+                      { color: isFilled ? '#fff' : '#000' }
+                    ]}>{label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            {/* Second row: boxes 6-10 (6K-10K steps) */}
+            <View style={[styles.boxRow, { marginTop: 20 }]}>
+              {Array.from({ length: 5 }, (_, index) => {
+                const actualIndex = index + 5; // Offset by 5 for second row
+                let boxColor = '#f0f0f0'; // Default gray
+                const isFilled = showProgress && actualIndex < currentFilledBoxes;
+                
+                if (isFilled) {
+                  // Progressive green colors for each box (1K to 10K steps)
+                  const progressColors = [
                     '#3d9140', // Box 6 (6K steps): Darker
                     '#307d36', // Box 7 (7K steps): Much darker
                     '#256a2c', // Box 8 (8K steps): Very dark
@@ -502,25 +536,23 @@ export default function App() {
                   boxColor = progressColors[index];
                 }
                 
+                const label = `${actualIndex + 1}K`;
+                
                 return (
                   <View 
-                    key={index} 
+                    key={actualIndex} 
                     style={[
                       styles.grayBox, 
                       { backgroundColor: boxColor }
                     ]} 
-                  />
+                  >
+                    <Text style={[
+                      styles.boxLabelInside,
+                      { color: isFilled ? '#fff' : '#000' }
+                    ]}>{label}</Text>
+                  </View>
                 );
               })}
-            </View>
-            <View style={styles.labelRow}>
-              {Array.from({ length: 10 }, (_, index) => (
-                <View key={index} style={styles.labelCell}>
-                  <Text style={styles.boxLabel}>
-                    {index === 0 ? '1K' : index === 9 ? '10K' : ''}
-                  </Text>
-                </View>
-              ))}
             </View>
           </View>
           <View style={styles.progressContainer}>
@@ -567,14 +599,15 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   statsContainer: {
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
     paddingTop: 20,
     flex: 1,
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    padding: 40,
+    paddingVertical: 40,
+    paddingHorizontal: 24,
     marginBottom: 16,
     alignItems: 'center',
     shadowColor: '#000',
@@ -593,8 +626,8 @@ const styles = StyleSheet.create({
   },
   cardNumber: {
     fontSize: 72,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '900',
+    color: '#3d9140',
   },
   errorText: {
     fontSize: 12,
@@ -619,11 +652,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   grayBox: {
-    width: 24,
-    height: 24,
+    width: 45,
+    height: 45,
     backgroundColor: '#f0f0f0',
-    marginHorizontal: 2,
-    borderRadius: 4,
+    marginHorizontal: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   confettiContainer: {
     position: 'absolute',
@@ -639,23 +674,11 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  labelCell: {
-    width: 24,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
-  boxLabel: {
-    fontSize: 10,
-    color: '#999',
-    fontWeight: '500',
+
+  boxLabelInside: {
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   welcomeContainer: {
     flex: 1,
