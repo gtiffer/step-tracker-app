@@ -562,7 +562,7 @@ export default function App() {
             {todaySteps === null && (pedometerPermission === 'denied' || pedometerPermission === 'error') && (
               <View style={styles.permissionCard}>
                 <Text style={styles.permissionInstructions}>To track your steps, go to:</Text>
-                <Text style={styles.permissionPath}>Settings → StepTracker → Motion & Fitness</Text>
+                <Text style={styles.permissionPath}>Settings → 10K Steps Today → Motion & Fitness</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={handleRetryPermissions}>
                   <Text style={styles.retryButtonText}>Check Again</Text>
                 </TouchableOpacity>

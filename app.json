@@ -2,7 +2,7 @@
   "expo": {
     "name": "10K Steps Today",
     "slug": "StepTracker",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,7 +21,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gustiffer.steptracker",
-      "buildNumber": "2",
+      "buildNumber": "1",
       "infoPlist": {
         "NSMotionUsageDescription": "This app uses motion data to track your daily steps and help you reach your 10K daily goal.",
         "NSHealthShareUsageDescription": "This app accesses HealthKit to read your step count data.",
